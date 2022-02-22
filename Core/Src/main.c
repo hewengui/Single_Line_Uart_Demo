@@ -23,7 +23,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,7 +44,11 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+#define RXBUFFERSIZE  256     //最大接收字节数
+char RxBuffer[RXBUFFERSIZE];   //接收数据
+uint8_t aRxBuffer;			//接收中断缓冲
+uint16_t Uart1_Rx_Cnt = 0;		//接收缓冲计数
+int8_t rv_ok = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -93,6 +98,9 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  //use interrupt received
+//  rv_ok = 0;
+//  HAL_UART_Receive_IT(&huart1, (uint8_t *)&RxBuffer, RXBUFFERSIZE);
   printf("\n\r UART Printf Example: retarget the C library printf function to the UART\n\r");
   printf("** Test finished successfully. ** \n\r");
   /* USER CODE END 2 */
@@ -104,8 +112,18 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-    HAL_Delay(100);
+    // if(HAL_UART_Receive(&huart1,(uint8_t *)RxBuffer,8,100)==HAL_OK){
+    //   HAL_UART_Transmit(&huart1,(uint8_t *)RxBuffer,8,0xFFFF);
+    // }
+	rv_ok = 0;
+	Uart1_Rx_Cnt = 0;
+	HAL_UART_Receive_IT(&huart1, (uint8_t *)&aRxBuffer, 1);   //再开启接收中断
+	while(rv_ok!=1){
+		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+		HAL_Delay(50);
+	}
+	HAL_UART_Transmit(&huart1, (uint8_t *)RxBuffer, Uart1_Rx_Cnt,0xFFFF);
+	memset(RxBuffer,0x00,sizeof(RxBuffer));
   }
   /* USER CODE END 3 */
 }
@@ -161,6 +179,39 @@ PUTCHAR_PROTOTYPE
   HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
 
   return ch;
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  /* Prevent unused argument(s) compilation warning */
+  UNUSED(huart);
+  /* NOTE: This function Should not be modified, when the callback is needed,
+           the HAL_UART_TxCpltCallback could be implemented in the user file
+   */
+//  char buff[50]={0};
+//  sprintf(buff,"rev st:%d it:%d\r\n",(int)huart->RxState,(int)huart->ErrorCode);
+//  HAL_UART_Transmit(&huart1, (uint8_t *)buff, strlen(buff),0xFFFF);
+//  rv_ok = 1;
+   if(Uart1_Rx_Cnt >= 255)  //溢出判断
+	 {
+	 	Uart1_Rx_Cnt = 0;
+	 	memset(RxBuffer,0x00,sizeof(RxBuffer));
+	 	HAL_UART_Transmit(&huart1, (uint8_t *)"memmeryout", 10,0xFFFF);
+        
+	 }
+	 else
+	 {
+	 	RxBuffer[Uart1_Rx_Cnt++] = aRxBuffer;   //接收数据转存
+	
+	 	if((RxBuffer[Uart1_Rx_Cnt-1] == 0x0A)&&(RxBuffer[Uart1_Rx_Cnt-2] == 0x0D)) //判断结束位
+	 	{
+	 		rv_ok = 1;
+	 		return;
+	 	}
+	 }
+   if(rv_ok==0){
+	   HAL_UART_Receive_IT(&huart1, (uint8_t *)&aRxBuffer, 1);   //再开启接收中断
+   }
 }
 /* USER CODE END 4 */
 
