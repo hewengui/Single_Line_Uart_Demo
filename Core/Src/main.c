@@ -29,7 +29,11 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef struct BI_MSG{
+    uint8_t cmd;
+    uint16_t param1;
+    uint16_t param2;
+}BI_MSG_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -65,7 +69,8 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+int BI_SP_Send_Msg(BI_MSG_t *request,BI_MSG_t *respone);
+HAL_StatusTypeDef BI_SP_Send_cmd(uint8_t *tBuff,uint16_t tSize,uint8_t *rBuff,uint16_t rSize);
 /* USER CODE END 0 */
 
 /**
@@ -112,6 +117,8 @@ int main(void)
   uint8_t rvByte = 0;
   uint8_t rvBuff[10] = {0};
   int step = 10;
+  BI_MSG_t request;
+  BI_MSG_t respone;
   while (1)
   {
     /* USER CODE END WHILE */
@@ -120,25 +127,36 @@ int main(void)
     // if(HAL_UART_Receive(&huart1,(uint8_t *)RxBuffer,8,100)==HAL_OK){
     //   HAL_UART_Transmit(&huart1,(uint8_t *)RxBuffer,8,0xFFFF);
     // }
-    
-    HAL_HalfDuplex_EnableReceiver(&huart1);
-    HAL_StatusTypeDef status = HAL_UART_Receive(&huart1,rvBuff,10,100);
-//          if(status == HAL_OK){
-//    //        rvBuff[count] = rvByte;
-//            count +=10;
-//          }
-    // step = 10;
-    // while(step>0){
-    //   rvByte = 0;
-
-    //   step --;
-    // }
-    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-    if(status == HAL_OK){
-      HAL_HalfDuplex_EnableTransmitter(&huart1);
-      status = HAL_UART_Transmit(&huart1,rvBuff,10,0xffff);
-      memset(rvBuff,0,10);
+    request.cmd = 0;
+    int ret = BI_SP_Send_Msg(&request,&respone);
+    if(ret==0){
+      request.cmd = 1;
+      request.param1 = 0;
+      //播放
+      BI_SP_Send_Msg(&request,&respone);
     }
+    for(int i=0;i<10;i++){
+      HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+      HAL_Delay(1100);
+    }
+    // HAL_HalfDuplex_EnableReceiver(&huart1);
+//     HAL_StatusTypeDef status = HAL_UART_Receive(&huart1,rvBuff,10,100);
+// //          if(status == HAL_OK){
+// //    //        rvBuff[count] = rvByte;
+// //            count +=10;
+// //          }
+//     // step = 10;
+//     // while(step>0){
+//     //   rvByte = 0;
+
+//     //   step --;
+//     // }
+//     HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+//     if(status == HAL_OK){
+//       HAL_HalfDuplex_EnableTransmitter(&huart1);
+//       status = HAL_UART_Transmit(&huart1,rvBuff,10,0xffff);
+//       memset(rvBuff,0,10);
+//     }
 //	HAL_Delay(100);
 //    if(count >=10){
 //      HAL_HalfDuplex_EnableTransmitter(&huart1);
@@ -222,6 +240,37 @@ PUTCHAR_PROTOTYPE
   return ch;
 }
 
+int BI_SP_Send_Msg(BI_MSG_t *request,BI_MSG_t *respone){
+  uint8_t tBuff[10] = {0};
+  uint8_t rBuff[10] = {0};
+  tBuff[0] = 0x55;
+  tBuff[1] = request->cmd;
+  tBuff[2] = (uint8_t)(request->param1&0xff);
+  tBuff[3] = (uint8_t)((request->param1>>8)&0xff);
+  tBuff[4] = (uint8_t)(request->param2&0xff);
+  tBuff[5] = (uint8_t)((request->param2>>8)&0xff);
+  tBuff[6] = 0xff;
+  tBuff[7] = 0xff;
+  tBuff[8] = 0x0d;
+  tBuff[9] = 0x0a;
+  HAL_StatusTypeDef status = BI_SP_Send_cmd(tBuff,10,rBuff,10);
+  if(status == HAL_OK){
+    respone->cmd = rBuff[1];
+    respone->param1 = (rBuff[2]|(rBuff[3]<<8))&0xffff;
+    respone->param2 = (rBuff[4]|(rBuff[5]<<8))&0xffff;
+    return 0;
+  }
+  return -1;
+}
+
+/***
+ * @brief send speaker control cmd to ad158.
+ * @param tBuff tx buffer address
+ * @param tSize tx buff size is 10
+ * @param rBuff respone buff
+ * @param rSize respone size is 10
+ * @retval HAL_OK means succcess
+ * **/
 HAL_StatusTypeDef BI_SP_Send_cmd(uint8_t *tBuff,uint16_t tSize,uint8_t *rBuff,uint16_t rSize){
   HAL_StatusTypeDef status = HAL_OK;
   HAL_HalfDuplex_EnableTransmitter(&huart1);
@@ -230,6 +279,8 @@ HAL_StatusTypeDef BI_SP_Send_cmd(uint8_t *tBuff,uint16_t tSize,uint8_t *rBuff,ui
     //logd("BI_Semd_cmd faild")
     return status;
   }
+  HAL_HalfDuplex_EnableReceiver(&huart1);
+  status = HAL_UART_Receive(&huart1,rBuff,rSize,1000);
   return status;
 }
 // void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
